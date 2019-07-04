@@ -1,0 +1,38 @@
+version: '3.1'
+
+services:
+
+  wordpress:
+    image: wordpress
+    restart: always
+    depends_on:
+      - database
+    networks:
+      - web
+    environment:
+      WORDPRESS_DB_HOST: database:3306
+      WORDPRESS_DB_PASSWORD: example
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.backend: wordpress
+        traefik.docker.network: web
+        traefik.frontend.rule: "Host:dev.lennoxemea.com"
+        traefik.enable: "true"
+        traefik.port: 80
+
+  database:
+    image: mariadb
+    restart: always
+    networks:
+      - web
+    environment:
+      MYSQL_ROOT_PASSWORD: example
+    deploy:
+      mode: replicated
+      replicas: 1
+
+networks:
+  web:
+    external: true

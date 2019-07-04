@@ -1,0 +1,29 @@
+logLevel = "DEBUG"
+
+defaultEntryPoints = ["http"]
+
+################################################################
+# Entry-points configuration
+################################################################
+[entryPoints]
+  [entryPoints.http]
+    address = ":80"
+  [entryPoints.traefik]
+    address = ":8080"
+################################################################
+# API config
+################################################################
+[api]
+  entryPoint = "traefik"
+  dashboard = true
+  debug = true
+################################################################
+# Docker configuration backend
+################################################################
+[docker]
+  endpoint = "unix:///var/run/docker.sock"
+  domain = "traefik.localhost"
+  watch = true
+  exposedbydefault = true
+  swarmMode = true
+  network = "web"
