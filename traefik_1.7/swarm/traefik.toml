@@ -1,0 +1,36 @@
+debug = false
+
+logLevel = "INFO"
+defaultEntryPoints = ["https","http"]
+
+[entryPoints]
+  [entryPoints.http]
+  address = ":80"
+    [entryPoints.http.redirect]
+    entryPoint = "https"
+  [entryPoints.https]
+  address = ":443"
+  [entryPoints.https.tls]
+  [entryPoints.dashboard]
+  address = ":8080"
+
+[retry]
+
+[docker]
+swarmMode = true
+endpoint = "unix:///var/run/docker.sock"
+domain = ""
+watch = true
+exposedByDefault = false
+
+[api]
+entryPoint = "dashboard"
+
+[acme]
+email = "your-email-here@my-domain.com"
+storage = "acme.json"
+entryPoint = "https"
+#caserver = "https://acme-staging-v02.api.letsencrypt.org/directory"
+onHostRule = true
+[acme.httpChallenge]
+entryPoint = "http"

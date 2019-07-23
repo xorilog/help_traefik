@@ -1,0 +1,34 @@
+version: '3'
+
+networks:
+  web:
+    external: true
+
+services:
+  traefik:
+    image: traefik:1.7.12
+    restart: always
+    ports:
+      - 80:80
+      - 8080:8080
+      - 443:443
+    networks:
+      - web
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/traefik/traefik.toml:/traefik.toml
+      - /opt/traefik/acme.json:/acme.json
+    container_name: traefik
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 5s
+      mode: replicated
+      replicas: 1
+      labels:
+        # webui/containous
+        traefik.frontend.auth.basic.users: "webui:$$2y$$05$$Xa9dKECtFOHd5rnwwTx4qOlPSLvIf3bVbvxDuGyL6qnoFKkujlLeu"
+        traefik.enable: "true"
+        traefik.docker.network: "web"
+        traefik.frontend.rule: "Host:dashboard.mydomain.com"
+        traefik.port: "8080"

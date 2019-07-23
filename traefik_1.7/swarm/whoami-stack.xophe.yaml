@@ -1,0 +1,36 @@
+version: '3.7'
+networks:
+  web:
+    external: true
+
+services:
+  whoami1:
+    image: containous/whoami
+    networks:
+      - web
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      mode: replicated
+      replicas: 2
+      labels:
+        traefik.enable: "true"
+        traefik.frontend.rule: "Host:whoami1.my-domain.com"
+        traefik.port: 80
+  whoami:
+    image: containous/whoami
+    networks:
+      - web
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      mode: replicated
+      replicas: 2
+      labels:
+        traefik.enable: "true"
+        traefik.frontend.rule: "Host:whoami.my-domain.com;Path:/whoami"
+        traefik.port: 80
