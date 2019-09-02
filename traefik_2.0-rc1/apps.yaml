@@ -1,0 +1,99 @@
+version: "3.3"
+
+services:
+  whoami:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.whoami.rule: 'Host(`whoami.workers.traefik-v2-rc1.dockeree.containous.cloud`)'
+        traefik.http.routers.whoami.entrypoints: 'web'
+        traefik.http.routers.whoami.service: 'whoami'
+        traefik.http.services.whoami.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  whoami-tcp:
+    image: containous/whoamitcp
+    command: -name whoami-tcp
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=traefik"
+        # Default conf
+        - "traefik.tcp.routers.whoami-tcp.entrypoints=tcp"
+        - "traefik.tcp.services.whoami-tcp.loadbalancer.server.port=8080"
+        #- "traefik.tcp.routers.whoami-tcp.rule=HostSNI(`*`)"
+
+        # SNI config 
+        # validation command: openssl s_client -connect whoami-tcp.workers.traefik-v2-rc1.dockeree.containous.cloud:2020 -servername whoami-tcp.workers.traefik-v2-rc1.dockeree.containous.cloud
+        - "traefik.tcp.routers.whoami-tcp.rule=HostSNI(`whoami-tcp.workers.traefik-v2-rc1.dockeree.containous.cloud`)"
+        - "traefik.tcp.routers.whoami-tcp.tls=true"
+
+        # TLS Passthrough
+        #- "traefik.tcp.routers.whoami-tcp.rule=HostSNI(`whoami-tcp.workers.traefik-v2-rc1.dockeree.containous.cloud`)"
+        #- "traefik.tcp.routers.whoami-tcp.tls=true"
+      placement:
+        constraints:
+          - node.role == worker
+    networks:
+      - traefik
+
+  whoami-tcp-passthrough:
+    image: containous/whoamitcp
+    command: -name whoami-tcp-passthrough -certFile /run/secrets/certFile -keyFile /run/secrets/keyFile
+    networks:
+      - traefik
+    secrets:
+       - certFile
+       - keyFile
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=traefik"
+        - "traefik.tcp.routers.whoami-tcp-passthrough.entrypoints=tcp"
+        - "traefik.tcp.services.whoami-tcp-passthrough.loadbalancer.server.port=8080"
+
+        # Passthrough config
+        # Option when doing a catchall
+        #- "traefik.tcp.routers.whoami-tcp-passthrough.rule=HostSNI(`*`)"
+
+        # validation command: openssl s_client -connect whoami-tcp.workers.traefik-v2-rc1.dockeree.containous.cloud:2020 -servername whoami-tcp.workers.traefik-v2-rc1.dockeree.containous.cloud
+         - "traefik.tcp.routers.whoami-tcp-passthrough.rule=HostSNI(`whoami-tcp-passthrough.workers.traefik-v2-rc1.dockeree.containous.cloud`)"
+        - "traefik.tcp.routers.whoami-tcp-passthrough.tls=true"
+        - "traefik.tcp.routers.whoami-tcp-passthrough.tls.passthrough=true"
+
+      placement:
+        constraints:
+          - node.role == worker
+    networks:
+      - traefik
+
+
+secrets:
+  # docker secret create certFile tcp/whoami-a.crt
+  certFile:
+    # use External if you used the above command to create the secret (distant swarm) 
+    external: true
+  #  file: tcp/whoami-a.crt
+  # docker secret create keyFile tcp/whoami-a.key
+  keyFile:
+    # use External if you used the above command to create the secret (distant swarm) 
+    external: true
+  #  file: tcp/whoami-a.key
+
+networks:
+  traefik:
+    external: true

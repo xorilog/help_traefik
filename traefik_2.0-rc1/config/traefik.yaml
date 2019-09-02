@@ -1,0 +1,18 @@
+entryPoints:
+  web:
+    address: :80
+  webs:
+    address: :443
+  tcp:
+    address: :2020
+providers:
+  docker:
+    watch: true
+    endpoint: tcp://socat:2375
+    exposedByDefault: false
+    swarmMode: true
+    network: traefik
+api: {}
+log:
+  level: DEBUG
+accessLog: {}

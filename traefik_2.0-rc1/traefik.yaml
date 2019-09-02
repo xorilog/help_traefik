@@ -1,0 +1,85 @@
+version: "3.3"
+
+services:
+  socat:
+    image: alpine/socat
+    command: tcp-listen:2375,fork,reuseaddr unix-connect:/var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - mgmt
+    deploy:
+      placement:
+        constraints:
+          - "node.role == manager"
+
+  traefik:
+    image: "traefik:v2.0.0-rc1"
+    # Configure Ttraefik through cli
+    #command:
+    #  - "--log.level=DEBUG"
+    #  - "--api=true"
+    #  - "--providers.docker.endpoint=tcp://socat:2375"
+    #  - "--providers.docker.exposedByDefault=false"
+    #  - "--providers.docker.network=traefik"
+    #  - "--providers.docker.swarmMode=true"
+    #  - "--entrypoints.web.address=:80"
+    #  - "--entrypoints.webs.address=:443"
+    #  - "--entrypoints.tcp.address=:2020"
+    #  - "--accesslog=true"
+
+    # Configure Ttraefik through environment variables
+    #environment:
+    #  - "TRAEFIK_LOG_LEVEL=DEBUG"
+    #  - "TRAEFIK_API=true"
+    #  - "TRAEFIK_PROVIDERS_DOCKER_ENDPOINT=tcp://socat:2375"
+    #  - "TRAEFIK_PROVIDERS_DOCKER_EXPOSEDBYDEFAULT=false"
+    #  - "TRAEFIK_PROVIDERS_DOCKER_NETWORK=traefik"
+    #  - "TRAEFIK_PROVIDERS_DOCKER_SWARMMODE=true"
+    #  - "TRAEFIK_ENTRYPOINTS_WEB_ADDRESS=:80"
+    #  - "TRAEFIK_ENTRYPOINTS_WEBS_ADDRESS=:443"
+    #  - "TRAEFIK_ENTRYPOINTS_TCP_ADDRESS=:2020"
+    #  - "TRAEFIK_ACCESSLOG=true"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "2020:2020"
+    networks:
+      - mgmt
+      - traefik
+#    volumes:
+#      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    configs:
+      - traefik.toml
+#      - traefik.yaml
+
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.http.routers.dashboard.rule: 'Host(`dashboard.workers.traefik-v2-rc1.dockeree.containous.cloud`)'
+        traefik.http.routers.dashboard.entrypoints: 'web'
+        traefik.http.routers.dashboard.service: 'dashboard'
+        traefik.http.services.dashboard.loadbalancer.server.port: '8080'
+      placement:
+        constraints:
+          - node.role == worker
+
+configs:
+
+  traefik.toml:
+    #file: ./config/traefik.toml
+    #docker config create traefik.toml config/traefik.toml
+    external: true
+  
+  traefik.yaml:
+    #file: ./config/traefik.yaml
+    # docker config create traefik.yaml config/traefik.yaml
+    external: true
+
+networks:
+  mgmt:
+    external: true
+  traefik:
+    external: true

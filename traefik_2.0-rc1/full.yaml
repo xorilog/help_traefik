@@ -1,0 +1,93 @@
+version: "3.3"
+
+services:
+  socat:
+    image: alpine/socat
+    command: tcp-listen:2375,fork,reuseaddr unix-connect:/var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - mgmt
+    deploy:
+      placement:
+        constraints:
+          - "node.role == manager"
+
+  traefik:
+    image: "traefik:v2.0.0-rc1"
+    command:
+      - "--log.level=INFO"
+      - "--api=true"
+      - "--providers.docker.endpoint=tcp://socat:2375"
+      - "--providers.docker.exposedByDefault=false"
+      - "--providers.docker.network=traefik"
+      - "--providers.docker.swarmMode=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.webs.address=:443"
+      - "--entrypoints.tcp.address=:2020"
+      - "--accesslog=true"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "2020:2020"
+    networks:
+      - mgmt
+      - traefik
+#    volumes:
+#      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.http.routers.dashboard.rule: 'Host(`dashboard.workers.traefik-v2-rc1.dockeree.containous.cloud`)'
+        traefik.http.routers.dashboard.entrypoints: 'web'
+        traefik.http.routers.dashboard.service: 'dashboard'
+        traefik.http.services.dashboard.loadbalancer.server.port: '8080'
+
+      placement:
+        constraints:
+          - node.role == worker
+
+  whoami:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.whoami.rule: 'Host(`whoami.workers.traefik-v2-rc1.dockeree.containous.cloud`)'
+        traefik.http.routers.whoami.entrypoints: 'web'
+        traefik.http.routers.whoami.service: 'whoami'
+        traefik.http.services.whoami.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  whoami-tcp:
+    image: containous/whoamitcp
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.tcp.routers.whoami-tcp.rule: 'HostSNI(`whoami-tcp.workers.traefik-v2-rc1.dockeree.containous.cloud`)'
+        traefik.tcp.routers.whoami-tcp.entrypoints: 'tcp'
+        traefik.tcp.services.whoami-tcp.loadbalancer.server.port: "8080"
+        traefik.docker.network: 'traefik'
+      placement:
+        constraints:
+          - node.role == worker
+    networks:
+      - traefik
+
+networks:
+  mgmt:
+    external: true
+  traefik:
+    external: true

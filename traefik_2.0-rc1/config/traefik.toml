@@ -1,0 +1,22 @@
+[entryPoints]
+  [entryPoints.web]
+    address = ":80"
+  [entryPoints.webs]
+    address = ":443"
+  [entryPoints.tcp]
+    address = ":2020"
+
+[providers]
+  [providers.docker]
+    watch = true
+    endpoint = "tcp://socat:2375"
+    exposedByDefault = false
+    swarmMode = true
+    network = "traefik"
+
+[api]
+
+[log]
+  level = "DEBUG"
+
+[accessLog]
