@@ -1,0 +1,6 @@
+[http]
+  [http.middlewares]
+    [http.middlewares.serve-errors.Errors]
+      status = ["400-599"]
+      service = "docker.serviceError_error-pages"
+      query = "/{status}.html"

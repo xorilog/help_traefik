@@ -14,19 +14,30 @@ services:
           - "node.role == manager"
 
   traefik:
-    image: "traefik:v2.0.0-rc1"
+    image: "traefik:v2.0.0-rc2"
     # Configure Ttraefik through cli
-    #command:
-    #  - "--log.level=DEBUG"
-    #  - "--api=true"
-    #  - "--providers.docker.endpoint=tcp://socat:2375"
-    #  - "--providers.docker.exposedByDefault=false"
-    #  - "--providers.docker.network=traefik"
-    #  - "--providers.docker.swarmMode=true"
-    #  - "--entrypoints.web.address=:80"
-    #  - "--entrypoints.webs.address=:443"
-    #  - "--entrypoints.tcp.address=:2020"
-    #  - "--accesslog=true"
+    command:
+      - "--log.level=DEBUG"
+      - "--api=true"
+      - "--providers.docker.endpoint=tcp://socat:2375"
+      - "--providers.docker.exposedByDefault=false"
+      - "--providers.docker.network=traefik"
+      - "--providers.docker.swarmMode=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.webs.address=:443"
+      - "--entrypoints.tcp.address=:2020"
+      - "--accesslog=true"
+
+      # certificate part with httpchallenge
+      - "--certificatesresolvers.httpchallenge.acme.httpchallenge=true"
+      - "--certificatesresolvers.httpchallenge.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.httpchallenge.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--certificatesresolvers.httpchallenge.acme.email=christophe@containo.us"
+      - "--certificatesresolvers.httpchallenge.acme.storage=/letsencrypt/acme.json"
+
+      # mtls configuration through file provider
+      - "--providers.file.directory=/traefik-providers-config"
+      - "--providers.file.watch=true"
 
     # Configure Ttraefik through environment variables
     #environment:
@@ -47,18 +58,30 @@ services:
     networks:
       - mgmt
       - traefik
-#    volumes:
+    volumes:
+      - "letsencrypt-staging:/letsencrypt:rw"
 #      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+# if we want to use config files... use the configs !
     configs:
-      - traefik.toml
+#      - traefik.toml
 #      - traefik.yaml
+      # dynamic file provider configuration
+      - source: dynamic_file-provider.yaml
+        target: /traefik-providers-config/dynamic_file-provider.yaml
+
+    secrets:
+      - mtls_ca.cert
+      - mtls_server.cert
+      - mtls_server.key
+      - mtls_client.cert
+      - mtls_client.key
 
     deploy:
       mode: replicated
       replicas: 1
       labels:
         traefik.enable: 'true'
-        traefik.http.routers.dashboard.rule: 'Host(`dashboard.workers.traefik-v2-rc1.dockeree.containous.cloud`)'
+        traefik.http.routers.dashboard.rule: 'Host(`dashboard.example.com`)'
         traefik.http.routers.dashboard.entrypoints: 'web'
         traefik.http.routers.dashboard.service: 'dashboard'
         traefik.http.services.dashboard.loadbalancer.server.port: '8080'
@@ -78,8 +101,38 @@ configs:
     # docker config create traefik.yaml config/traefik.yaml
     external: true
 
+  dynamic_file-provider.yaml:
+    #file: ./config/dynamic_file-provider.yaml
+    # docker config create dynamic_file-provider.yaml config/dynamic_file-provider.yaml
+    external: true
+
+volumes:
+  letsencrypt-staging:
+
 networks:
   mgmt:
     external: true
   traefik:
+    external: true
+
+secrets:
+  # docker secret create mtls_server.cert mtls/mtls_server.cert
+  mtls_server.cert: 
+  #  file: mtls/mtls_server.cert
+    external: true
+  # docker secret create mtls_server.key mtls/mtls_server.key
+  mtls_server.key:
+  #  file: mtls/mtls_server.key
+    external: true
+  # docker secret create mtls_client.cert mtls/mtls_client.cert
+  mtls_client.cert:
+  #  file: mtls/mtls_client.cert
+    external: true
+  # docker secret create mtls_client.key mtls/mtls_client.key
+  mtls_client.key:
+  #  file: mtls/mtls_client.key
+    external: true
+  # docker secret create mtls_ca.cert mtls/mtls_ca.cert
+  mtls_ca.cert:
+  #  file: mtls/mtls_ca.cert
     external: true

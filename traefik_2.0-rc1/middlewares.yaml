@@ -1,0 +1,664 @@
+version: "3.3"
+
+services:
+  addprefix:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.addprefix.rule: 'Host(`addprefix.example.com`)'
+        traefik.http.routers.addprefix.entrypoints: 'web'
+        traefik.http.routers.addprefix.middlewares: 'addprefix'
+        # Second writing
+        # traefik.http.routers.addprefix.middlewares: 'addprefix@docker'
+        traefik.http.middlewares.addprefix.addprefix.prefix: '/foo'
+        traefik.http.services.addprefix.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  basicauth:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.basicauth.rule: 'Host(`basicauth.example.com`)'
+        traefik.http.routers.basicauth.entrypoints: 'web'
+        traefik.http.routers.basicauth.middlewares: 'basicauth@docker'
+        # login: traefik or toto, password: v2-rc1
+        traefik.http.middlewares.basicauth.basicauth.users: 'traefik:$$apr1$$87yfp6i1$$5IpL2TLWvgktRaUZ7RJOZ/,toto:$$apr1$$87yfp6i1$$5IpL2TLWvgktRaUZ7RJOZ/'
+        #traefik.http.middlewares.basicauth.basicauth.realm: 'yolo'
+        #traefik.http.middlewares.basicauth.basicauth.headerfield: 'Yolo-Header-X-WebAuth-User'
+        #traefik.http.middlewares.basicauth.basicauth.removeHeader: 'true'
+        traefik.http.services.basicauth.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  buffering:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.buffering.rule: 'Host(`buffering.example.com`)'
+        traefik.http.routers.buffering.entrypoints: 'web'
+        traefik.http.routers.buffering.middlewares: 'buffering'
+        # Second writing
+        # traefik.http.routers.buffering.middlewares: 'buffering@docker'
+        # generate payloads to test
+        # dd if=/dev/zero of=payloads/250001B bs=1 count=250001
+        # dd if=/dev/zero of=payloads/250kB bs=1 count=250000
+        # dd if=/dev/zero of=payloads/244kB bs=1 count=244000
+        # dd if=/dev/zero of=payloads/100kB bs=1 count=100000
+        # dd if=/dev/zero of=payloads/50kB bs=1 count=50000
+        # curl -v http://buffering.example.com/ --data-binary @payloads/250001B  # 513 recieved
+        # curl -v http://buffering.example.com/ --data-binary @payloads/250kB    # 200 ok
+        # curl -v http://buffering.example.com/ --data-binary @payloads/244kB    # 200 ok
+        # curl -v http://buffering.example.com/ --data-binary @payloads/100kB    # 200 ok
+        # curl -v http://buffering.example.com/ --data-binary @payloads/50kB     # 200 ok
+        # curl -v http://buffering.example.com/data?size=250&unit=KB # maximum allowed for the response
+        # curl -v http://buffering.example.com/data?size=125&unit=KB # maximum allowed for the response without buffering to disk
+        traefik.http.middlewares.buffering.buffering.maxrequestbodybytes: '250000'
+        traefik.http.middlewares.buffering.buffering.memrequestbodybytes: '125000'
+        # curl -v http://buffering.example.com/data?size=250&unit=KB # must fail due to encoding and real body size is 260KB
+        # curl -v http://buffering.example.com/data?size=244&unit=KB # maximum allowed for the response
+        # curl -v http://buffering.example.com/data?size=125&unit=KB # maximum allowed for the response without buffering to disk
+        traefik.http.middlewares.buffering.buffering.maxresponsebodybytes: '250000'
+        traefik.http.middlewares.buffering.buffering.memresponsebodybytes: '125000'
+        # Retries once in case of a network error
+        traefik.http.middlewares.buffering.buffering.retryexpression: 'IsNetworkError() && Attempts() < 2'
+        traefik.http.services.buffering.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  chain:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.chain.rule: 'Host(`chain.example.com`)'
+        traefik.http.routers.chain.entrypoints: 'web'
+        traefik.http.routers.chain.middlewares: 'chain'
+        # login: traefik or toto, password: v2-rc1
+        traefik.http.middlewares.chain.chain.middlewares: 'addprefix,basicauth@docker'
+        traefik.http.services.chain.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  circuitbreaker:
+    image: "xorilog/error-pages"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.circuitbreaker.rule: 'Host(`circuitbreaker.example.com`)'
+        traefik.http.routers.circuitbreaker.entrypoints: 'web'
+        traefik.http.routers.circuitbreaker.middlewares: 'circuitbreaker'
+        # More than 30% of network errors, => break
+        #traefik.http.middlewares.circuitbreaker.circuitbreaker.expression: 'NetworkErrorRatio() > 0.30'
+        # More than 25% of http codes from the 0 to 599 range are in the 500->599 codesrange => break
+        # thing to understand here is we have 2 ranges: the catching range (all the status code is 0 to 600 excluded) and the observation range (code between 500 and 600 excluded).
+        # The observation range have to be in the catching range (or it cannot be a percentage of the requests)
+        # More explanation here: ResponseCodeRatio([1],[2],[3],[4]): [1][2] are the observation range, [3][4] is the catching range
+        # 1: start observation range
+        # 2: end observation range
+        # 3: start catching range.
+        # 4: end catching range.
+        #traefik.http.middlewares.circuitbreaker.circuitbreaker.expression: 'ResponseCodeRatio(500, 600, 0, 600) > 0.25'
+        # 50% of requests have more than 100ms (slow requests) => break
+        # LatencyAtQuantileMS(quantile) > duration in ms
+        #traefik.http.middlewares.circuitbreaker.circuitbreaker.expression: 'LatencyAtQuantileMS(50.0) > 100'
+        # Combination
+        traefik.http.middlewares.circuitbreaker.circuitbreaker.expression: 'LatencyAtQuantileMS(50.0) > 100 || ResponseCodeRatio(400, 600, 0, 600) > 0.25'
+        traefik.http.services.circuitbreaker.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  compress:
+    image: "xorilog/error-pages"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        # curl -v --compressed http://compress.example.com/ (contains: Accept-Encoding: deflate, gzip)
+        traefik.http.routers.compress.rule: 'Host(`compress.example.com`)'
+        traefik.http.routers.compress.entrypoints: 'web'
+        traefik.http.routers.compress.middlewares: 'compress'
+        traefik.http.middlewares.compress.compress: 'true'
+        traefik.http.services.compress.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  digestauth:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.digestauth.rule: 'Host(`digestauth.example.com`)'
+        traefik.http.routers.digestauth.entrypoints: 'web'
+        traefik.http.routers.digestauth.middlewares: 'digestauth'
+        # login: traefik but available in 2 realms (use .realm to an existing realm or it will never match the users), password: v2-rc1
+        traefik.http.middlewares.digestauth.digestauth.users: 'traefik:traefik:0627057a7f041a197ae7563fb7b7713b,traefik:toto:eb99f468e6f4804d273f7cd61525c4d6'
+        #traefik.http.middlewares.digestauth.digestauth.realm: 'toto'
+        traefik.http.middlewares.digestauth.digestauth.headerfield: 'Digest-Header-X-WebAuth-User'
+        #traefik.http.middlewares.digestauth.digestauth.removeHeader: 'true'
+        traefik.http.services.digestauth.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  errorpages:
+    image: "xorilog/error-pages"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.errorpages.rule: 'Host(`errorpages.example.com`)'
+        traefik.http.routers.errorpages.entrypoints: 'web'
+        traefik.http.routers.errorpages.middlewares: 'errorpages'
+        traefik.http.services.errorpages.loadbalancer.server.port: '80'
+        # errorpages@docker middleware declaration
+        traefik.http.middlewares.errorpages.errors.status: '400-599'
+        traefik.http.middlewares.errorpages.errors.service: 'errorpages'
+        traefik.http.middlewares.errorpages.errors.query: '/{status}.html'
+      placement:
+        constraints:
+          - node.role == worker
+
+  external-auth:
+    image: "jlevesy/whoami:withauthandmtls"
+    networks:
+      - traefik
+    command: 
+      - "-port=443"
+      - "-cert=/run/secrets/mtls_server.cert"
+      - "-key=/run/secrets/mtls_server.key"
+      - "-cacert=/run/secrets/mtls_ca.cert"
+    secrets:
+       - mtls_server.cert
+       - mtls_server.key
+       - mtls_ca.cert
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        # http listen and redirect
+        traefik.http.routers.fwdauth.rule: 'Host(`external-auth.example.com`)'
+        traefik.http.routers.external-auth.entrypoints: 'web'
+        traefik.http.routers.external-auth.middlewares: 'usetls'
+        traefik.http.routers.external-auth.service: 'external-auth'
+
+        # https handling
+        traefik.http.routers.external-auth-secured.rule: 'Host(`external-auth.example.com`)'
+        traefik.http.routers.external-auth-secured.entrypoints: 'webs'
+        traefik.http.routers.external-auth-secured.service: 'external-auth'
+        traefik.http.routers.external-auth-secured.tls: ''
+        traefik.http.routers.external-auth-secured.tls.certresolver: 'httpchallenge'
+        
+        traefik.http.services.external-auth.loadbalancer.server.port: '443'
+        
+        # usetls@docker
+        traefik.http.middlewares.usetls.redirectscheme.scheme: 'https'
+
+        # external-auth@docker middleware declaration with oauth2-proxy
+        #traefik.http.middlewares.external-auth.forwardauth.address: 'http://external-auth/auth'
+
+        # with mtls (certs from git@github.com:jlevesy/grpc-mtls-playground tool)
+        traefik.http.middlewares.external-auth.forwardauth.address: 'https://external-auth/auth'
+        # with self-signed certs... /!\ The certs for the middleware MUST be accessible by Traefik binary/container ! 
+        #traefik.http.middlewares.external-auth.forwardauth.tls.insecureSkipVerify: 'true' # not needed in mtls
+        traefik.http.middlewares.external-auth.forwardauth.tls.ca: '/run/secrets/mtls_ca.cert'
+        traefik.http.middlewares.external-auth.forwardauth.tls.caOptional: 'false'
+        traefik.http.middlewares.external-auth.forwardauth.tls.cert: '/run/secrets/mtls_client.cert'
+        traefik.http.middlewares.external-auth.forwardauth.tls.key: '/run/secrets/mtls_client.key'
+        traefik.http.middlewares.external-auth.forwardauth.authResponseHeaders: 'X-Auth-User, X-Secret'
+      placement:
+        constraints:
+          - node.role == worker
+
+  # Minimal working config forwardauth working as the app to access with external-auth
+  # curl -u whoami:whoami http://forwardauth.example.com -k -L -v   #shall work
+  # curl http://forwardauth.example.com -k -L -v                    #shall not work
+  forwardauth:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        # http redirect
+        traefik.http.routers.forwardauth.rule: 'Host(`forwardauth.example.com`)'
+        traefik.http.routers.forwardauth.entrypoints: 'web'
+        traefik.http.routers.forwardauth.middlewares: 'usetls'
+
+        # https handling and ask for authentication
+        traefik.http.routers.forwardauth-secure.rule: 'Host(`forwardauth.example.com`)'
+        traefik.http.routers.forwardauth-secure.entrypoints: 'webs'
+        traefik.http.routers.forwardauth-secure.middlewares: 'external-auth'
+        traefik.http.routers.forwardauth-secure.service: 'forwardauth'
+        traefik.http.routers.forwardauth-secure.tls: ''
+        traefik.http.routers.forwardauth-secure.tls.certresolver: 'httpchallenge'
+
+        traefik.http.services.forwardauth.loadbalancer.server.port: '80'
+
+      placement:
+        constraints:
+          - node.role == worker
+
+  headers:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.headers.rule: 'Host(`headers.example.com`)'
+        traefik.http.routers.headers.entrypoints: 'web'
+        traefik.http.routers.headers.middlewares: 'headers'
+        # Second writing
+        # traefik.http.routers.headers.middlewares: 'headers@docker'
+        # check curl -v headers.example.com
+        traefik.http.middlewares.headers.headers.customrequestheaders.X-Script-Name: 'test'
+        traefik.http.middlewares.headers.headers.customresponseheaders.X-Custom-Response-Header: 'value'
+
+        traefik.http.services.headers.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  ipwhitelist:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.ipwhitelist.rule: 'Host(`ipwhitelist.example.com`)'
+        traefik.http.routers.ipwhitelist.entrypoints: 'web'
+        traefik.http.routers.ipwhitelist.middlewares: 'ipwhitelist'
+        # Second writing
+        # traefik.http.routers.ipwhitelist.middlewares: 'ipwhitelist@docker'
+        # check curl -v ipwhitelist.example.com
+        traefik.http.middlewares.ipwhitelist.ipwhitelist.sourcerange: '10.0.1.74/32, 10.255.0.3' # my traefik current IP
+        #traefik.http.middlewares.ipwhitelist.ipwhitelist.ipstrategy.depth: '1'
+        traefik.http.services.ipwhitelist.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  inflightreq:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.inflightreq.rule: 'Host(`inflightreq.example.com`)'
+        traefik.http.routers.inflightreq.entrypoints: 'web'
+        traefik.http.routers.inflightreq.middlewares: 'inflightreq'
+        traefik.http.middlewares.inflightreq.inflightreq.amount: '10'
+        # slowhttptest -c 100 -B -t GET -u http://inflightreq.example.com
+        traefik.http.middlewares.inflightreq.inflightreq.sourcecriterion.requesthost: 'true'
+        # slowhttptest -c 100 -H -t GET -u http://inflightreq.example.com
+        #traefik.http.middlewares.inflightreq.inflightreq.sourcecriterion.requestHeaderName: 'username'
+        traefik.http.services.inflightreq.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  passtlsclientcert:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.passtlsclientcert.rule: 'Host(`passtlsclientcert.example.com`)'
+
+        traefik.http.routers.passtlsclientcert.entrypoints: 'webs'
+        traefik.http.routers.passtlsclientcert.tls.options: 'mtls@file'
+        # curl --cacert mtls/mtls_ca.cert --key mtls/mtls_client.key --cert mtls/mtls_client.cert https://passtlsclientcert.example.com
+        traefik.http.routers.passtlsclientcert.middlewares: 'passtlsclientcert'
+
+        # pass the cert in pem format in the header
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.pem: 'true'
+
+        # pass the cert in pem format in the header
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.notafter: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.notbefore: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.sans: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.subject.commonname: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.subject.country: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.subject.domaincomponent: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.subject.locality: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.subject.organization: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.subject.province: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.subject.serialnumber: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.issuer.commonname: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.issuer.country: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.issuer.domaincomponent: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.issuer.locality: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.issuer.organization: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.issuer.province: 'true'
+        traefik.http.middlewares.passtlsclientcert.passtlsclientcert.info.issuer.serialnumber: 'true'
+
+        traefik.http.services.passtlsclientcert.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  ratelimit:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.ratelimit.rule: 'Host(`ratelimit.example.com`)'
+        traefik.http.routers.ratelimit.entrypoints: 'web'
+        traefik.http.routers.ratelimit.middlewares: 'ratelimit'
+        # Second writing
+        # traefik.http.routers.ratelimit.middlewares: 'ratelimit@docker'
+        #Explanations on those values:
+        # tu as deux bucket:
+        # 1 pour avg, 1 pour le burst.
+        # tu fais des requests pour vider ton avg et ton avg se remplit automagically toute les secondes.
+        # si tu fais plus de requests que ce qui est disponible, tu vas bouffer dans le bucket de burst.
+        # si ton bucket de burst est vide, tu fais des 429.
+        # et la est le truc important: ton bucket de burst ne se re-remplit que quand tu ne vite pas en entier ton bucket d'avg de la quantitée restante.
+        traefik.http.middlewares.ratelimit.ratelimit.average: '5' 
+        traefik.http.middlewares.ratelimit.ratelimit.burst: '10'
+        # echo "GET http://ratelimit.example.com/" | vegeta attack -rate=200 -header="username: gobi" | vegeta report -every 100ms
+        traefik.http.middlewares.ratelimit.ratelimit.sourcecriterion.requesthost: 'true'
+        #traefik.http.middlewares.ratelimit.ratelimit.sourcecriterion.requestHeaderName: 'username'
+        #traefik.http.middlewares.ratelimit.ratelimit.ratelimit.sourcecriterion.ipstrategy.depth: '1'
+        #traefik.http.middlewares.ratelimit.ratelimit.sourcecriterion.ipstrategy.excludedips: '127.0.0.1/32, 192.168.1.7'
+
+        traefik.http.services.ratelimit.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  redirectregex:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.redirectregex.rule: 'Host(`redirectregex.example.com`)'
+        traefik.http.routers.redirectregex.entrypoints: 'web,webs'
+        traefik.http.routers.redirectregex.middlewares: 'redirectregex'
+        # Second writing
+        # traefik.http.routers.redirectregex.middlewares: 'redirectregex@docker'
+        # curl -vkL http://redirectregex.example.com/#getstarted
+        traefik.http.middlewares.redirectregex.redirectregex.regex: '^http://redirectregex.example.com/(.*)'
+        traefik.http.middlewares.redirectregex.redirectregex.replacement: 'https://mae.sh/$$1'
+        traefik.http.services.redirectregex.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  redirectscheme:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        # http router
+        traefik.http.routers.redirectscheme.rule: 'Host(`redirectscheme.example.com`)'
+        traefik.http.routers.redirectscheme.entrypoints: 'web'
+        traefik.http.routers.redirectscheme.middlewares: 'redirectscheme'
+
+        # https router
+        traefik.http.routers.redirectscheme-secured.rule: 'Host(`redirectscheme.example.com`)'
+        traefik.http.routers.redirectscheme-secured.entrypoints: 'webs'
+        traefik.http.routers.redirectscheme-secured.service: 'redirectscheme'
+        traefik.http.routers.redirectscheme-secured.tls: ''
+        traefik.http.routers.redirectscheme-secured.tls.certresolver: 'httpchallenge'
+
+        # Second writing
+        # traefik.http.routers.redirectscheme.middlewares: 'redirectscheme@docker'
+        # curl -vkL http://redirectscheme.example.com
+        traefik.http.middlewares.redirectscheme.redirectscheme.scheme: 'https'
+        traefik.http.services.redirectscheme.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  replacepath:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.replacepath.rule: 'Host(`replacepath.example.com`)'
+        traefik.http.routers.replacepath.entrypoints: 'web'
+        traefik.http.routers.replacepath.middlewares: 'replacepath'
+        # Second writing
+        # traefik.http.routers.replacepath.middlewares: 'replacepath@docker'
+        # curl -vkL http://replacepath.example.com/i-will-be-replaced-by-foo
+        traefik.http.middlewares.replacepath.replacepath.path: '/foo'
+        traefik.http.services.replacepath.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  replacepathregex:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.replacepathregex.rule: 'Host(`replacepathregex.example.com`)'
+        traefik.http.routers.replacepathregex.entrypoints: 'web'
+        traefik.http.routers.replacepathregex.middlewares: 'replacepathregex'
+        # Second writing
+        # traefik.http.routers.replacepathregex.middlewares: 'replacepathregex@docker'
+        # curl -vkL http://replacepathregex.example.com/foo/foo-preceding-will-be-replaced-by-bar
+        traefik.http.middlewares.replacepathregex.replacepathregex.regex: '^/foo/(.*)'
+        traefik.http.middlewares.replacepathregex.replacepathregex.replacement: '/bar/$$1'
+        traefik.http.services.replacepathregex.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  retry:
+    image: 'subfuzion/netcat:latest'
+    command: 
+      - '-nlvk'
+      - '0.0.0.0'
+      - '80'
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.retry.rule: 'Host(`retry.example.com`)'
+        traefik.http.routers.retry.entrypoints: 'web'
+        traefik.http.routers.retry.middlewares: 'retry'
+        # Second writing
+        # traefik.http.routers.retry.middlewares: 'retry@docker'
+        # curl -vL http://retry.example.com/retry4
+        # look at the logs the request shall appear 4 times
+        traefik.http.middlewares.retry.retry.attempts: '4'
+        traefik.http.services.retry.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  stripprefix:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.stripprefix.rule: 'Host(`stripprefix.example.com`)'
+        traefik.http.routers.stripprefix.entrypoints: 'web'
+        traefik.http.routers.stripprefix.middlewares: 'stripprefix'
+        # Second writing
+        # traefik.http.routers.stripprefix.middlewares: 'stripprefix@docker'
+        # curl -vL http://stripprefix.example.com/foobar
+        # curl -vL http://stripprefix.example.com/fiibar
+        # curl -vL http://stripprefix.example.com/foobar/toto
+        # curl -vL http://stripprefix.example.com/fabar
+        traefik.http.middlewares.stripprefix.stripprefix.prefixes: '/foobar, /fiibar'
+        traefik.http.services.stripprefix.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  stripprefixregex:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.stripprefixregex.rule: 'Host(`stripprefixregex.example.com`)'
+        traefik.http.routers.stripprefixregex.entrypoints: 'web'
+        traefik.http.routers.stripprefixregex.middlewares: 'stripprefixregex'
+        # Second writing
+        # traefik.http.routers.stripprefixregex.middlewares: 'stripprefixregex@docker'
+        # curl -vL http://stripprefixregex.example.com/foo/azerty0123/qwerty/ # shall not be stripped
+        # curl -vL http://stripprefixregex.example.com/foo/azerty0123/12345/ # shall be stripped
+        # curl -vL http://stripprefixregex.example.com/foo/azerty0123/12345 # shall not be stripped
+        # curl -vL http://stripprefixregex.example.com/foo/azerty0123/ # shall not be stripped
+        traefik.http.middlewares.stripprefixregex.stripprefixregex.regex: '/foo/[a-z0-9]+/[0-9]+/'
+        traefik.http.services.stripprefixregex.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+  midlewarecombination:
+    image: "containous/whoami"
+    networks:
+      - traefik
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.midlewarecombination.rule: 'Host(`midlewarecombination.example.com`)'
+        traefik.http.routers.midlewarecombination.entrypoints: 'web'
+        # curl -vL http://midlewarecombination.example.com/foobar # shall replace foobar or fiibar by foo
+        traefik.http.routers.midlewarecombination.middlewares: 'stripprefix,addprefix'
+        # Second writing
+        # traefik.http.routers.midlewarecombination.middlewares: 'midlewarecombination@docker'
+        traefik.http.services.midlewarecombination.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+
+secrets:
+  # docker secret create mtls_server.cert mtls/mtls_server.cert
+  mtls_server.cert: 
+  #  file: mtls/mtls_server.cert
+    external: true
+  # docker secret create mtls_server.key mtls/mtls_server.key
+  mtls_server.key:
+  #  file: mtls/mtls_server.key
+    external: true
+  # docker secret create mtls_client.cert mtls/mtls_client.cert
+  mtls_client.cert:
+  #  file: mtls/mtls_client.cert
+    external: true
+  # docker secret create mtls_client.key mtls/mtls_client.key
+  mtls_client.key:
+  #  file: mtls/mtls_client.key
+    external: true
+  # docker secret create mtls_ca.cert mtls/mtls_ca.cert
+  mtls_ca.cert:
+  #  file: mtls/mtls_ca.cert
+    external: true
+
+networks:
+  traefik:
+    external: true

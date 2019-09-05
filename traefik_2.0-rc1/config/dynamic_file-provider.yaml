@@ -1,0 +1,12 @@
+tls:
+  certificates:
+    - certFile: /run/secrets/mtls_server.cert
+      keyFile: /run/secrets/mtls_server.key
+      stores:
+        - default
+  options:
+    mtls:
+      clientAuth:
+        caFiles:
+          - /run/secrets/mtls_ca.cert
+        clientAuthType: RequireAndVerifyClientCert
