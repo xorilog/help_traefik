@@ -485,6 +485,9 @@ services:
         traefik.http.routers.redirectscheme-secured.tls: ''
         traefik.http.routers.redirectscheme-secured.tls.certresolver: 'httpchallenge'
 
+        # with an option on the router (totaly optional and a specific test here)
+        traefik.http.routers.redirectscheme-secured.tls.options: 'mintls13@file'
+
         # Second writing
         # traefik.http.routers.redirectscheme.middlewares: 'redirectscheme@docker'
         # curl -vkL http://redirectscheme.example.com

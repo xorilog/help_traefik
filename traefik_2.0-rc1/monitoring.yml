@@ -1,0 +1,245 @@
+version: '3.3'
+
+volumes:
+    prometheus_data: {}
+    grafana_data: {}
+    graphite_data: {}
+    influxdb_data: {}
+
+networks:
+  traefik:
+    external: true
+
+services:
+# Prometheus start #
+  prometheus:
+    image: prom/prometheus
+    configs:
+      - source: prometheus.yml
+        target: /etc/prometheus/prometheus.yml
+    volumes:
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    depends_on:
+      - cadvisor
+    networks:
+      - traefik
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        # http handling
+        traefik.http.routers.prometheus.rule: 'Host(`prometheus.example.com`)'
+        traefik.http.routers.prometheus.entrypoints: 'web'
+        traefik.http.routers.prometheus.middlewares: 'redirectscheme'
+
+        # https handling
+        traefik.http.routers.prometheus-secured.rule: 'Host(`prometheus.example.com`)'
+        traefik.http.routers.prometheus-secured.entrypoints: 'webs'
+        traefik.http.routers.prometheus-secured.tls: ''
+        traefik.http.routers.prometheus-secured.tls.certresolver: 'httpchallenge'
+
+        traefik.http.services.prometheus.loadbalancer.server.port: '9090'
+
+  node-exporter:
+    image: prom/node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - --collector.filesystem.ignored-mount-points
+      - "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
+    networks:
+      - traefik
+    deploy:
+      mode: global
+
+  cadvisor:
+    image: google/cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - traefik
+    deploy:
+      mode: global
+
+  grafana:
+    image: grafana/grafana:6.0.2
+    depends_on:
+      - prometheus
+    configs:
+      - source: dashboard.yml
+        target: /etc/grafana/provisioning/dashboards/dashboard.yml
+      - source: traefikee.json
+        target: /etc/grafana/provisioning/dashboards/traefikee.json
+      - source: datasources.yml
+        target: /etc/grafana/provisioning/datasources/datasources.yml
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      GF_INSTANCE_NAME: 'containous-grafana'
+      GF_LOG_LEVEL: 'debug'
+      GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: 'Admin'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+
+    networks:
+      - traefik
+    deploy:
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        # http handling
+        traefik.http.routers.grafana.rule: 'Host(`grafana.example.com`)'
+        traefik.http.routers.grafana.entrypoints: 'web'
+        traefik.http.routers.grafana.middlewares: 'redirectscheme'
+
+        # https handling
+        traefik.http.routers.grafana-secured.rule: 'Host(`grafana.example.com`)'
+        traefik.http.routers.grafana-secured.entrypoints: 'webs'
+        traefik.http.routers.grafana-secured.tls: ''
+        traefik.http.routers.grafana-secured.tls.certresolver: 'httpchallenge'
+
+        traefik.http.services.grafana.loadbalancer.server.port: '3000'
+# Prometheus end #
+# statsd start #
+
+  # Debug commands frpm an other alpine container
+  # apk add --upgrade bind-tools
+  # echo "udpfromtraefik.gauge:9|g" | nc -u -w0 graphite-statsd 8125
+  graphite-statsd:
+    image: "graphiteapp/graphite-statsd"
+    networks:
+      - traefik
+    volumes:
+      - graphite_data:/opt/graphite/storage
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.graphite-statsd.rule: 'Host(`graphite-statsd.example.com`)'
+        traefik.http.routers.graphite-statsd.entrypoints: 'web'
+
+        # https handling
+        traefik.http.routers.graphite-statsd.rule: 'Host(`graphite-statsd.example.com`)'
+        traefik.http.routers.graphite-statsd.entrypoints: 'webs'
+        traefik.http.routers.graphite-statsd.tls: ''
+        traefik.http.routers.graphite-statsd.tls.certresolver: 'httpchallenge'
+
+        traefik.http.services.graphite-statsd.loadbalancer.server.port: '80'
+      placement:
+        constraints:
+          - node.role == worker
+# statsd end #
+# influxdb start #
+  influxdb:
+    image: "influxdb:1.5.4-alpine"
+    networks:
+      - traefik
+    configs:
+      - source: influxdb.conf
+        target: /etc/influxdb/influxdb.conf
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.influxdb.rule: 'Host(`influxdb.example.com`)'
+        traefik.http.routers.influxdb.middlewares: 'redirectscheme'
+
+        traefik.http.routers.influxdb.entrypoints: 'web'
+
+        # https handling
+        traefik.http.routers.influxdb.rule: 'Host(`influxdb.example.com`)'
+        traefik.http.routers.influxdb.entrypoints: 'webs'
+        traefik.http.routers.influxdb.tls: ''
+        traefik.http.routers.influxdb.tls.certresolver: 'httpchallenge'
+
+        traefik.http.services.influxdb.loadbalancer.server.port: '8086' # HTTP API port
+      placement:
+        constraints:
+          - node.role == worker
+
+# influxdb end #
+# Datadog start #
+  dd-agent:
+    image: "datadog/agent:latest"
+    networks:
+      - traefik
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+    environment:
+      DD_API_KEY: 'DATA_DOG_KEY'
+      # Monitoring
+      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
+      DD_DOGSTATSD_SOCKET: "/var/run/docker.sock"
+      DD_DOGSTATSD_TAGS: '["traefik:v2-rc2"]'
+      # tracing specific
+      DD_APM_ENABLED: "true"
+    deploy:
+      mode: replicated
+      replicas: 1
+      labels:
+        traefik.enable: 'true'
+        traefik.docker.network: 'traefik'
+        traefik.http.routers.dd-agent.rule: 'Host(`dd-agent.example.com`)'
+        traefik.http.routers.dd-agent.entrypoints: 'web'
+
+        # https handling
+        traefik.http.routers.dd-agent.rule: 'Host(`dd-agent.example.com`)'
+        traefik.http.routers.dd-agent.entrypoints: 'webs'
+        traefik.http.routers.dd-agent.tls: ''
+        traefik.http.routers.dd-agent.tls.certresolver: 'httpchallenge'
+
+        traefik.http.services.dd-agent.loadbalancer.server.port: '80' # HTTP API port
+      placement:
+        constraints:
+          - node.role == manager
+# Datadog end #
+
+configs:
+# Prometheus start #
+  prometheus.yml:
+    #file: ./config/prometheus/prometheus.yml
+    #docker config create prometheus.yml config/prometheus/prometheus.yml
+    external: true
+  dashboard.yml:
+    #file: ./config/grafana/provisioning/dashboards/dashboard.yml
+    #docker config create dashboard.yml config/grafana/provisioning/dashboards/dashboard.yml
+    external: true
+  traefikee.json:
+    #file: ./config/grafana/provisioning/dashboards/traefikee.json
+    #docker config create traefikee.json config/grafana/provisioning/dashboards/traefikee.json
+    external: true
+  datasources.yml:
+    #file: ./config/grafana/provisioning/datasources/datasources.yml
+    #docker config create datasources.yml config/grafana/provisioning/datasources/datasources.yml
+    external: true
+# Prometheus end #
+# influxdb start #
+  influxdb.conf:
+    file: ./config/influxdb/influxdb.conf
+    # docker config create influxdb.conf config/influxdb/influxdb.conf
+    external: true
+# influxdb end #

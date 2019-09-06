@@ -15,9 +15,30 @@ services:
 
   traefik:
     image: "traefik:v2.0.0-rc2"
+    #image: "traefik:v2.0.0-rc2-alpine" # always have an alpine ready when debugging is required :D
+
     # Configure Ttraefik through cli
     command:
-      - "--log.level=DEBUG"
+      # internal logs
+      - "--log.level=INFO"
+      #- "--log.filePath=/path/to/traefik.log"
+      #- "--log.format=json"
+      # accesslogs
+      - "--accesslog=true"
+      #- "--accesslog.filepath=/path/to/access.log"
+      #- "--accesslog.format=json"
+      # filtering logs
+      #- "--accesslog.filters.statuscodes=200,300-302"
+      #- "--accesslog.filters.retryattempts"
+      #- "--accesslog.filters.minduration=10ms"
+      # managing fields
+      #- "--accesslog.fields.defaultmode=keep"
+      #- "--accesslog.fields.names.ClientUsername=drop"
+      #- "--accesslog.fields.headers.defaultmode=keep"
+      #- "--accesslog.fields.headers.names.User-Agent=redact"
+      #- "--accesslog.fields.headers.names.Authorization=drop"
+      #- "--accesslog.fields.headers.names.Content-Type=keep"
+
       - "--api=true"
       - "--providers.docker.endpoint=tcp://socat:2375"
       - "--providers.docker.exposedByDefault=false"
@@ -26,7 +47,25 @@ services:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.webs.address=:443"
       - "--entrypoints.tcp.address=:2020"
-      - "--accesslog=true"
+
+      # constraints
+      # Includes only containers having a label with key `com.docker.stack.image` and value `containous/whoami`
+      #- "--providers.docker.constraints=Label(`com.docker.stack.image`, `containous/whoami`)"
+
+      ## Excludes containers having any label with key `com.docker.stack.image` and value `containous/whoami`
+      #- "--providers.docker.constraints=!Label(`com.docker.stack.image`, `containous/whoami`)"
+      #
+      ## With logical AND.
+      #- "--providers.docker.constraints=Label(`com.docker.stack.image`, `containous/whoami`) && Label(`traefik.http.routers.redirectregex.entrypoints`, `web,webs`)"
+      #
+      ## With logical OR.
+      #- "--providers.docker.constraints=Label(`com.docker.stack.image`, `containous/whoami`) || Label(`com.docker.stack.image`, `xorilog/error-pages`)"
+      #
+      ## With logical AND and OR, with precedence set by parentheses.
+      #- "--providers.docker.constraints=Label(`com.docker.stack.image`, `xorilog/error-pages`) && (Label(`traefik.http.routers.compress.middlewares`, `compress`) || Label(`traefik.http.routers.errorpages.middlewares`, `errorpages`))"
+      #
+      ## Includes only containers having a label with key `com.docker.stack.image` and a value matching the `a.+` regular expression.
+      #- "--providers.docker.constraints=LabelRegex(`com.docker.stack.image`, `containous/whoam.+`)"
 
       # certificate part with httpchallenge
       - "--certificatesresolvers.httpchallenge.acme.httpchallenge=true"
@@ -38,6 +77,76 @@ services:
       # mtls configuration through file provider
       - "--providers.file.directory=/traefik-providers-config"
       - "--providers.file.watch=true"
+
+      # prometheus metrics
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.buckets=0.100000, 0.300000, 1.200000, 5.000000"
+      - "--metrics.prometheus.addEntryPointsLabels=true"
+      - "--metrics.prometheus.addServicesLabels=true"
+
+      # statsd metrics
+      - "--metrics.statsd=true"
+      - "--metrics.statsd.address=graphite-statsd:8125"
+      - "--metrics.statsd.addEntryPointsLabels=true"
+      - "--metrics.statsd.addServicesLabels=true"
+      - "--metrics.statsd.pushInterval=10s"
+
+      ## influxdb metrics
+      - "--metrics.influxdb=true"
+      # udp only section
+      # port 8089 is the default udp port but udp is not enabled by default in influxdb config
+      - '--metrics.influxdb.protocol=udp'
+      # Do not enclose the address:port in quotes
+      - "--metrics.influxdb.address=influxdb:8089"
+      ## http only section
+      ## default http port is 8086 and is enabled by default in the influxdb config
+      ### Do not enclose the address:port in quotes
+      #- "--metrics.influxdb.protocol=http"
+      #- "--metrics.influxdb.address=http://influxdb:8086"
+      ##- '--metrics.influxdb.password=""'
+      ##- '--metrics.influxdb.username=""'
+      ##- '--metrics.influxdb.retentionPolicy=""'
+      #- '--metrics.influxdb.database=traefik'
+      #- "--metrics.influxdb.addEntryPointsLabels=true"
+      #- "--metrics.influxdb.addServicesLabels=true"
+      #- "--metrics.influxdb.pushInterval=10s"
+
+      # datadog metrics
+      - "--metrics.datadog=true"
+      - "--metrics.datadog.address=dd-agent:8125"
+      - "--metrics.datadog.addEntryPointsLabels=true"
+      - "--metrics.datadog.addServicesLabels=true"
+      - "--metrics.datadog.pushInterval=10s"
+      
+      # Tracing part
+      # jaeger 
+      - "--tracing.jaeger=true"
+      - "--tracing.jaeger.samplingServerURL=http://jaeger:5778/sampling"
+      - "--tracing.jaeger.samplingType=const"
+      - "--tracing.jaeger.samplingParam=1.0"
+      - "--tracing.jaeger.localAgentHostPort=jaeger:6831"
+      - "--tracing.jaeger.gen128Bit"
+      - "--tracing.jaeger.propagation=jaeger"
+      - "--tracing.jaeger.traceContextHeaderName=uber-trace-id"
+      - "--tracing.jaeger.collector.endpoint=http://jaeger:14268/api/traces?format=jaeger.thrift"
+      #- "--tracing.jaeger.collector.user=my-user"
+      #- "--tracing.jaeger.collector.password=my-password"
+
+      # zipkin
+      #- "--tracing.zipkin=true"
+      #- "--tracing.zipkin.httpEndpoint=http://jaeger:9411/api/v2/spans"
+      #- "--tracing.zipkin.sameSpan=true"
+      #- "--tracing.zipkin.id128Bit=false"
+      #- "--tracing.zipkin.sampleRate=0.2"
+
+      # datadog
+      #- "--tracing.datadog.debug=true"
+      #- "--tracing.datadog.localAgentHostPort=dd-agent:8126"
+      #- "--tracing.datadog.debug=true"
+      #- "--tracing.datadog.globalTag=sample"
+      #- "--tracing.datadog.prioritySampling=true"
+
+
 
     # Configure Ttraefik through environment variables
     #environment:
@@ -60,6 +169,7 @@ services:
       - traefik
     volumes:
       - "letsencrypt-staging:/letsencrypt:rw"
+      - traefik_logs:/path/to
 #      - "/var/run/docker.sock:/var/run/docker.sock:ro"
 # if we want to use config files... use the configs !
     configs:
@@ -107,7 +217,8 @@ configs:
     external: true
 
 volumes:
-  letsencrypt-staging:
+  letsencrypt-staging: {}
+  traefik_logs: {}
 
 networks:
   mgmt:

@@ -1,10 +1,15 @@
 tls:
+  options:
+
+
   certificates:
     - certFile: /run/secrets/mtls_server.cert
       keyFile: /run/secrets/mtls_server.key
       stores:
         - default
   options:
+    mintls13:
+      minVersion: VersionTLS13
     mtls:
       clientAuth:
         caFiles:
